@@ -574,26 +574,8 @@ func deltaNets(a, b []*net.IPNet) (add, del []*net.IPNet) {
 	return
 }
 
-func excludeIPv6LinkLocal(in []*net.IPNet) (out []*net.IPNet) {
-	out = in[:0]
-	for _, n := range in {
-		if len(n.IP) == 16 && n.IP.IsLinkLocalUnicast() {
-			// Windows creates a fixed link-local address for wintun,
-			// which doesn't seem to route correctly. Unfortunately, LLMNR returns this
-			// address for lookups by the hostname, and Windows prefers using it.
-			// This means that local traffic addressed to the machine's hostname breaks.
-			//
-			// While we otherwise preserve link-local addresses, we delete
-			// this one to force lookups to use a working address.
-			//
-			// See: https://github.com/tailscale/tailscale/issues/4647
-			if ip, ok := netaddr.FromStdIP(n.IP); !ok || wintunLinkLocal != ip {
-				continue // filter this IPNet
-			}
-		}
-		out = append(out, n)
-	}
-	return out
+func isIPv6LinkLocal(in *net.IPNet) bool {
+	return len(in.IP) == 16 && in.IP.IsLinkLocalUnicast()
 }
 
 // ipAdapterUnicastAddressToIPNet converts windows.IpAdapterUnicastAddress to net.IPNet.
@@ -622,28 +604,51 @@ func unicastIPNets(ifc *winipcfg.IPAdapterAddresses) []*net.IPNet {
 // doing the minimum number of AddAddresses & DeleteAddress calls.
 // This avoids the full FlushAddresses.
 //
-// Any IPv6 link-local addresses are not deleted.
+// Any IPv6 link-local addresses are not deleted out of caution as some
+// configurations may repeatedly re-add them. Link-local addresses are adjusted
+// to apply SkipAsSource to prevent them from being used, a the addresses will
+// not be routed on the Tailscale interface.
 func syncAddresses(ifc *winipcfg.IPAdapterAddresses, want []*net.IPNet) error {
-	var erracc error
+	var erracc []error
 
 	got := unicastIPNets(ifc)
 	add, del := deltaNets(got, want)
-	del = excludeIPv6LinkLocal(del)
+
+	ll := make([]*net.IPNet, 0)
 	for _, a := range del {
+		// do not delete link-local addresses, and collect them for later
+		// applying SkipAsSource.
+		if isIPv6LinkLocal(a) {
+			ll = append(ll, a)
+			continue
+		}
+
 		err := ifc.LUID.DeleteIPAddress(*a)
 		if err != nil {
-			erracc = fmt.Errorf("deleting IP %q: %w", *a, err)
+			erracc = append(erracc, fmt.Errorf("deleting IP %q: %w", *a, err))
 		}
 	}
 
 	for _, a := range add {
 		err := ifc.LUID.AddIPAddress(*a)
 		if err != nil {
-			erracc = fmt.Errorf("adding IP %q: %w", *a, err)
+			erracc = append(erracc, fmt.Errorf("adding IP %q: %w", *a, err))
 		}
 	}
 
-	return erracc
+	for _, a := range ll {
+		mib, err := ifc.LUID.IPAddress(a.IP)
+		if err != nil {
+			erracc = append(erracc, fmt.Errorf("setting skip-as-source on IP %q: unable to retrieve MIB: %w", *a, err))
+			continue
+		}
+		mib.SkipAsSource = true
+		if err := mib.Set(); err != nil {
+			erracc = append(erracc, fmt.Errorf("setting skip-as-source on IP %q: unable to set MIB: %w", *a, err))
+		}
+	}
+
+	return multierr.New(erracc...)
 }
 
 func routeDataCompare(a, b *winipcfg.RouteData) int {
