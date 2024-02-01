@@ -62,6 +62,7 @@ func main() {
 		priorityClassName = defaultEnv("PROXY_PRIORITY_CLASS_NAME", "")
 		tags              = defaultEnv("PROXY_TAGS", "tag:k8s")
 		tsFirewallMode    = defaultEnv("PROXY_FIREWALL_MODE", "")
+		clampMSSToMTU     = defaultEnv("PROXY_CLAMP_MSS_TO_MTU", "")
 	)
 
 	var opts []kzap.Opts
@@ -92,7 +93,7 @@ func main() {
 	maybeLaunchAPIServerProxy(zlog, restConfig, s, mode)
 	// TODO (irbekrm): gather the reconciler options into an opts struct
 	// rather than passing a million of them in one by one.
-	runReconcilers(zlog, s, tsNamespace, restConfig, tsClient, image, priorityClassName, tags, tsFirewallMode)
+	runReconcilers(zlog, s, tsNamespace, restConfig, tsClient, image, priorityClassName, tags, tsFirewallMode, clampMSSToMTU)
 }
 
 // initTSNet initializes the tsnet.Server and logs in to Tailscale. It uses the
@@ -200,7 +201,7 @@ waitOnline:
 
 // runReconcilers starts the controller-runtime manager and registers the
 // ServiceReconciler. It blocks forever.
-func runReconcilers(zlog *zap.SugaredLogger, s *tsnet.Server, tsNamespace string, restConfig *rest.Config, tsClient *tailscale.Client, image, priorityClassName, tags, tsFirewallMode string) {
+func runReconcilers(zlog *zap.SugaredLogger, s *tsnet.Server, tsNamespace string, restConfig *rest.Config, tsClient *tailscale.Client, image, priorityClassName, tags, tsFirewallMode string, clampMSSToMTU string) {
 	var (
 		isDefaultLoadBalancer = defaultBool("OPERATOR_DEFAULT_LOAD_BALANCER", false)
 	)
@@ -244,6 +245,7 @@ func runReconcilers(zlog *zap.SugaredLogger, s *tsnet.Server, tsNamespace string
 		proxyImage:             image,
 		proxyPriorityClassName: priorityClassName,
 		tsFirewallMode:         tsFirewallMode,
+		clampMSSToMTU:          clampMSSToMTU,
 	}
 	err = builder.
 		ControllerManagedBy(mgr).

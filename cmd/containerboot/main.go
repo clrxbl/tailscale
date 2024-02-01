@@ -130,6 +130,7 @@ func main() {
 		AuthOnce:                 defaultBool("TS_AUTH_ONCE", false),
 		Root:                     defaultEnv("TS_TEST_ONLY_ROOT", "/"),
 		TailscaledConfigFilePath: defaultEnv("EXPERIMENTAL_TS_CONFIGFILE_PATH", ""),
+		ClampMSSToMTU:            defaultEnv("TS_CLAMP_MSS_TO_MTU", ""),
 	}
 	if err := cfg.validate(); err != nil {
 		log.Fatalf("invalid configuration: %v", err)
@@ -422,7 +423,7 @@ runLoop:
 								continue
 							}
 							log.Printf("Installing forwarding rules for destination %v", ea.String())
-							if err := installEgressForwardingRule(ctx, ea.String(), addrs, nfr); err != nil {
+							if err := installEgressForwardingRule(ctx, ea.String(), addrs, nfr, cfg.ClampMSSToMTU); err != nil {
 								log.Fatalf("installing egress proxy rules for destination %s: %v", ea.String(), err)
 							}
 						}
@@ -431,7 +432,7 @@ runLoop:
 				}
 				if cfg.ProxyTo != "" && len(addrs) > 0 && ipsHaveChanged {
 					log.Printf("Installing proxy rules")
-					if err := installIngressForwardingRule(ctx, cfg.ProxyTo, addrs, nfr); err != nil {
+					if err := installIngressForwardingRule(ctx, cfg.ProxyTo, addrs, nfr, cfg.ClampMSSToMTU); err != nil {
 						log.Fatalf("installing ingress proxy rules: %v", err)
 					}
 				}
@@ -447,7 +448,7 @@ runLoop:
 				}
 				if cfg.TailnetTargetIP != "" && ipsHaveChanged && len(addrs) > 0 {
 					log.Printf("Installing forwarding rules for destination %v", cfg.TailnetTargetIP)
-					if err := installEgressForwardingRule(ctx, cfg.TailnetTargetIP, addrs, nfr); err != nil {
+					if err := installEgressForwardingRule(ctx, cfg.TailnetTargetIP, addrs, nfr, cfg.ClampMSSToMTU); err != nil {
 						log.Fatalf("installing egress proxy rules: %v", err)
 					}
 				}
@@ -806,8 +807,9 @@ func ensureIPForwarding(root, clusterProxyTarget, tailnetTargetiP, tailnetTarget
 	return nil
 }
 
-func installEgressForwardingRule(ctx context.Context, dstStr string, tsIPs []netip.Prefix, nfr linuxfw.NetfilterRunner) error {
+func installEgressForwardingRule(ctx context.Context, dstStr string, tsIPs []netip.Prefix, nfr linuxfw.NetfilterRunner, clampMSSToMTUStr string) error {
 	dst, err := netip.ParseAddr(dstStr)
+	clampMSSToMTU, err := strconv.Atoi(clampMSSToMTUStr)
 	if err != nil {
 		return err
 	}
@@ -831,14 +833,21 @@ func installEgressForwardingRule(ctx context.Context, dstStr string, tsIPs []net
 	if err := nfr.AddSNATRuleForDst(local, dst); err != nil {
 		return fmt.Errorf("installing egress proxy rules: %w", err)
 	}
-	if err := nfr.ClampMSSToPMTU("tailscale0", dst); err != nil {
-		return fmt.Errorf("installing egress proxy rules: %w", err)
+	if clampMSSToMTU != 0 {
+		if err := nfr.ClampMSSToMTU("tailscale0", dst, clampMSSToMTU); err != nil {
+			return fmt.Errorf("installing egress proxy rules: %w", err)
+		}
+	} else {
+		if err := nfr.ClampMSSToPMTU("tailscale0", dst); err != nil {
+			return fmt.Errorf("installing egress proxy rules: %w", err)
+		}
 	}
 	return nil
 }
 
-func installIngressForwardingRule(ctx context.Context, dstStr string, tsIPs []netip.Prefix, nfr linuxfw.NetfilterRunner) error {
+func installIngressForwardingRule(ctx context.Context, dstStr string, tsIPs []netip.Prefix, nfr linuxfw.NetfilterRunner, clampMSSToMTUStr string) error {
 	dst, err := netip.ParseAddr(dstStr)
+	clampMSSToMTU, err := strconv.Atoi(clampMSSToMTUStr)
 	if err != nil {
 		return err
 	}
@@ -859,8 +868,14 @@ func installIngressForwardingRule(ctx context.Context, dstStr string, tsIPs []ne
 	if err := nfr.AddDNATRule(local, dst); err != nil {
 		return fmt.Errorf("installing ingress proxy rules: %w", err)
 	}
-	if err := nfr.ClampMSSToPMTU("tailscale0", dst); err != nil {
-		return fmt.Errorf("installing ingress proxy rules: %w", err)
+	if clampMSSToMTU != 0 {
+		if err := nfr.ClampMSSToMTU("tailscale0", dst, clampMSSToMTU); err != nil {
+			return fmt.Errorf("installing egress proxy rules: %w", err)
+		}
+	} else {
+		if err := nfr.ClampMSSToPMTU("tailscale0", dst); err != nil {
+			return fmt.Errorf("installing egress proxy rules: %w", err)
+		}
 	}
 	return nil
 }
@@ -897,6 +912,7 @@ type settings struct {
 	Root                     string
 	KubernetesCanPatch       bool
 	TailscaledConfigFilePath string
+	ClampMSSToMTU            string
 }
 
 func (s *settings) validate() error {

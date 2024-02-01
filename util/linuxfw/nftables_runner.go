@@ -317,6 +317,11 @@ func (n *nftablesRunner) ClampMSSToPMTU(tun string, addr netip.Addr) error {
 	return n.conn.Flush()
 }
 
+func (n *nftablesRunner) ClampMSSToMTU(tun string, addr netip.Addr, mtu int) error {
+	// Unimplemented
+	return nil
+}
+
 // deleteTableIfExists deletes a nftables table via connection c if it exists
 // within the given family.
 func deleteTableIfExists(c *nftables.Conn, family nftables.TableFamily, name string) error {
@@ -507,8 +512,12 @@ type NetfilterRunner interface {
 	DNATNonTailscaleTraffic(exemptInterface string, dst netip.Addr) error
 
 	// ClampMSSToPMTU adds a rule to the mangle/FORWARD chain to clamp MSS for
-	// traffic destined for the provided tun interface.
+	// traffic destined for the provided tun interface to PMTU.
 	ClampMSSToPMTU(tun string, addr netip.Addr) error
+
+	// ClampMSSToMTU adds a rule to the mangle/FORWARD chain to clamp MSS for
+	// traffic destined for the provided tun interface to a configurable MTU.
+	ClampMSSToMTU(tun string, addr netip.Addr, mtu int) error
 
 	// AddMagicsockPortRule adds a rule to the ts-input chain to accept
 	// incoming traffic on the specified port, to allow magicsock to

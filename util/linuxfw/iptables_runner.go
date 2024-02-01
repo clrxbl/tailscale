@@ -312,6 +312,11 @@ func (i *iptablesRunner) ClampMSSToPMTU(tun string, addr netip.Addr) error {
 	return table.Append("mangle", "FORWARD", "-o", tun, "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN", "-j", "TCPMSS", "--clamp-mss-to-pmtu")
 }
 
+func (i *iptablesRunner) ClampMSSToMTU(tun string, addr netip.Addr, mtu int) error {
+	table := i.getIPTByAddr(addr)
+	return table.Append("mangle", "FORWARD", "-o", tun, "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN", "-j", "TCPMSS", "--set-mss", strconv.Itoa(mtu))
+}
+
 // addBase6 adds some basic IPv6 processing rules to be
 // supplemented by later calls to other helpers.
 func (i *iptablesRunner) addBase6(tunname string) error {

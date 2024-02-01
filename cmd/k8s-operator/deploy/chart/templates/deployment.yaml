@@ -74,6 +74,8 @@ spec:
               value: "{{ .Values.apiServerProxyConfig.mode }}"
             - name: PROXY_FIREWALL_MODE
               value: {{ .Values.proxyConfig.firewallMode }}
+            - name: PROXY_CLAMP_MSS_TO_MTU
+              value: {{ .Values.proxyConfig.clampMSSToMTU | quote }}
           volumeMounts:
           - name: oauth
             mountPath: /oauth

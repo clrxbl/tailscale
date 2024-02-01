@@ -105,6 +105,7 @@ type tailscaleSTSReconciler struct {
 	proxyImage             string
 	proxyPriorityClassName string
 	tsFirewallMode         string
+	clampMSSToMTU          string
 }
 
 func (sts tailscaleSTSReconciler) validate() error {
@@ -463,6 +464,12 @@ func (a *tailscaleSTSReconciler) reconcileSTS(ctx context.Context, logger *zap.S
 		container.Env = append(container.Env, corev1.EnvVar{
 			Name:  "TS_DEBUG_FIREWALL_MODE",
 			Value: a.tsFirewallMode,
+		})
+	}
+	if a.clampMSSToMTU != "" {
+		container.Env = append(container.Env, corev1.EnvVar{
+			Name:  "TS_CLAMP_MSS_TO_MTU",
+			Value: a.clampMSSToMTU,
 		})
 	}
 	ss.Spec.Template.Spec.PriorityClassName = a.proxyPriorityClassName
