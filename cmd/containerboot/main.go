@@ -833,14 +833,13 @@ func installEgressForwardingRule(ctx context.Context, dstStr string, tsIPs []net
 	if err := nfr.AddSNATRuleForDst(local, dst); err != nil {
 		return fmt.Errorf("installing egress proxy rules: %w", err)
 	}
-	if clampMSSToMTU != 0 {
-		if err := nfr.ClampMSSToMTU("tailscale0", dst, clampMSSToMTU); err != nil {
-			return fmt.Errorf("installing egress proxy rules: %w", err)
-		}
-	} else {
-		if err := nfr.ClampMSSToPMTU("tailscale0", dst); err != nil {
-			return fmt.Errorf("installing egress proxy rules: %w", err)
-		}
+	// TODO: this should not be hardcoded to eth0 (or any other interface)
+	// but not sure how to get the network interface with the default route in Go
+	if err := nfr.ClampMSSToMTU("eth0", dst, clampMSSToMTU); err != nil {
+		return fmt.Errorf("installing egress proxy rules: %w", err)
+	}
+	if err := nfr.ClampMSSToPMTU("tailscale0", dst); err != nil {
+		return fmt.Errorf("installing egress proxy rules: %w", err)
 	}
 	return nil
 }
@@ -868,14 +867,13 @@ func installIngressForwardingRule(ctx context.Context, dstStr string, tsIPs []ne
 	if err := nfr.AddDNATRule(local, dst); err != nil {
 		return fmt.Errorf("installing ingress proxy rules: %w", err)
 	}
-	if clampMSSToMTU != 0 {
-		if err := nfr.ClampMSSToMTU("tailscale0", dst, clampMSSToMTU); err != nil {
-			return fmt.Errorf("installing egress proxy rules: %w", err)
-		}
-	} else {
-		if err := nfr.ClampMSSToPMTU("tailscale0", dst); err != nil {
-			return fmt.Errorf("installing egress proxy rules: %w", err)
-		}
+	// TODO: this should not be hardcoded to eth0 (or any other interface)
+	// but not sure how to get the network interface with the default route in Go
+	if err := nfr.ClampMSSToMTU("eth0", dst, clampMSSToMTU); err != nil {
+		return fmt.Errorf("installing egress proxy rules: %w", err)
+	}
+	if err := nfr.ClampMSSToPMTU("tailscale0", dst); err != nil {
+		return fmt.Errorf("installing egress proxy rules: %w", err)
 	}
 	return nil
 }

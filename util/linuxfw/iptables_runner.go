@@ -314,9 +314,7 @@ func (i *iptablesRunner) ClampMSSToPMTU(tun string, addr netip.Addr) error {
 
 func (i *iptablesRunner) ClampMSSToMTU(tun string, addr netip.Addr, mtu int) error {
 	table := i.getIPTByAddr(addr)
-	// TODO: this should not be hardcoded to eth0 (or any other interface)
-	// but not sure how to get the network interface with the default route in Go
-	return table.Append("mangle", "FORWARD", "-o", "eth0", "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN", "-j", "TCPMSS", "--set-mss", strconv.Itoa(mtu))
+	return table.Append("mangle", "FORWARD", "-o", tun, "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN", "-j", "TCPMSS", "--set-mss", strconv.Itoa(mtu))
 }
 
 // addBase6 adds some basic IPv6 processing rules to be
